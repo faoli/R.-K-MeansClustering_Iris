@@ -1,0 +1,130 @@
+# K-Means clustering exercise: I am going to perform clustering analysis using the R in-built data set iris. The data contains information about 3 species of flowers (setosa, versicolor and virginica) regarding physical characteristics found in 50 individual examples for each one of these flowers#
+
+#1) Load and declare the data set#
+
+df <- iris
+str(df) # I confirm it is in data.frame format#
+summary(df)
+
+#2) Assessing clusterabilty. Everyone knows that this data set is perfectly clusterable and that the ideal number of clusters is 3. However, this step can be necessary for bigger, more complex sets of data and this practice will serve as a guide for future analysis#
+
+# I can decide to scale the data or not. For this case I will not scale the data, but it is recommended, because sometimes it will allow for a more efficient clustering analysis (specially if there are large quantities of data).The func get_clust_tendency (factoextra package) can be used. It computes the Hopskins statistic and provides a visual approach#
+
+dfnumbers <- subset(df, select = -(Species)) # I need to eliminate any non numerical data for the next step to work.#
+
+#install.packages("factoextra")#
+
+library(ggplot2)
+library(factoextra)
+
+flowers <- get_clust_tendency(dfnumbers, 50, graph = TRUE)
+flowers$hopkins_stat #Hopskin statistic#
+
+print(flowers$plot) #Disimilarity matrix#
+
+# The value of the Hopkins statistic is significantly < 0.5, indicating that the data is highly clusterable. Additionally, It can be seen that the ordered dissimilarity image contains patterns (i.e., clusters).#
+
+#3) Estimating the ideal number of clusters. As k-means clustering requires to specify the number of clusters to generate, I will use the function clusGap() [cluster package] to compute gap statistics for estimating the optimal number of clusters . The function fviz_gap_stat() [factoextra] is used to visualize the gap statistic plot.#
+
+#install.packages("cluster")#
+
+library(cluster)
+
+set.seed (123) #The number of times the next formula will iterate#
+gap_stat <- clusGap(dfnumbers, FUN = kmeans, nstart = 25,
+                    K.max = 10, B = 100)
+
+fviz_gap_stat(gap_stat)
+
+#The gap statistics suggests a 6 optimal number of clusters#
+
+# Alternatively, The package NbClust has a more simple and more efficient formula to calculate the most efficient number of clusters. In this case it recommends either 2 or 3 as the best number of clusters. From a practical approach one can use any method of determining the ideal number of clusters depending on the practices of the industry. For the sake of simplicity I will use 2 clusters for this example.#
+
+#install.packages("NbClust")#
+
+library(NbClust)
+
+set.seed(123)
+nb <- NbClust(dfnumbers, method = "kmeans")
+
+#4) Computing K-Means clustering.
+
+km.flowers <- kmeans(dfnumbers, 2, nstart = 25)
+head(km.flowers$cluster, 20)
+
+fviz_cluster(km.flowers, dfnumbers,
+             )
+
+# Another way to look at the data will be to show the Species of flower inside the clusters. I can do this by using the column "Species" as the index.#
+
+library(tidyverse)
+
+df2 <- tibble::rowid_to_column(df, "ID") #I create a new column with the Index#
+
+df2$SpeciesID <- paste(df2$Species, df2$ID) #I create the new SpeciesID cloumn by merging both.Like this it is already good, but it can be done even better#
+df3 <- subset(df2, select = -c(Species,ID)) #I drop the unecesary columns#
+
+df3modindex <- data.frame(df3[,], row.names = df3[,5]) #I use the new "SpeciesID" as the index.#
+df3modindex2 <- subset(df3modindex, select = -(SpeciesID)) #I drop the "SpeciesID" column since I don't need it.#
+
+#Now I can apply the K-means cluster formula again, but now I can visualise both the ID and the Species of flower. I can clearly see how all Setosa flowers have very specific and similar Sepal and Petal lengths, that differentiates them from both Versicolor and Virginica. Versicolor and Virginica have more similar dimentions so they can be grouped into the same cluster, I can conclude that they are more similar between each other than the Setosas.Only one Versicolor (Versicolor 99) falls into the Red cluster with the rest of the Setosas, but it is not by much and this can be considered an outlier.#
+
+km.flowers2 <- kmeans(df3modindex2, 2, nstart = 25)
+head(km.flowers2, 20)
+
+fviz_cluster(km.flowers2, df3modindex2,
+             stand =TRUE, #Data is standarsed#
+             labelsize = 10, #I reduce the label size, so I can visualise it better#
+             pointsize = 0.9, #Point size#
+             ggtheme = theme_classic() # Just the style of the graph#
+             )
+
+#If instead of maths I apply common sense and use 3 clusters, the graph will make a lot more sense. Sometimes one has to try what makes more sense from a practical point of view#
+
+km.flowers2 <- kmeans(df3modindex2, 3, nstart = 25)
+head(km.flowers2, 20)
+
+fviz_cluster(km.flowers2, df3modindex2,
+             stand =TRUE, #Data is standarsed#
+             labelsize = 10, #I reduce the label size, so I can visualise it better#
+             pointsize = 0.9, #Point size#
+             ggtheme = theme_classic()) # Just the style of the graph#
+             
+#5) Cluster validation statistics: Inspecting cluster silhouette plot. In basic terms, with this method I can see how similar an object is to the other objects in the same cluster.#
+
+sil1 <- silhouette(km.flowers2$cluster,
+                   dist(df3modindex2))
+
+neg_sil_index <- which(sil1[, "sil_width"] < 0) #Only used to select the negative objects#
+sil1[neg_sil_index, , drop = FALSE] #Only Used to identify the negative objects and not drop them#
+
+rownames(sil1) <- rownames(df3modindex2)
+head(sil1[, 1:3])
+
+fviz_silhouette(sil1)
+
+#6) Hierarchical clustering. The function eclust()[factoextra package] provides several advantages compared to the standard packages used for clustering analysis: It simplifies the workflow of clustering analysis; It can be used to compute hierarchical clustering and partitioning clustering in a single line function call; The function eclust() computes automatically the gap statistic for estimating the right number of clusters; It automatically provides silhouette information, It draws beautiful graphs using ggplot2.#
+
+#Hierarchical clustering#
+
+kmflowers2.hc <- eclust(df3modindex2,
+                        "hclust",
+                        scale = "none")
+
+fviz_dend(kmflowers2.hc, rect = TRUE) #dendrogam#
+
+fviz_silhouette(kmflowers2.hc) #silhouette plot for the new hierarchical clustering#
+fviz_cluster(kmflowers2.hc) #cluster plot for the new hierarchical clustering#
+
+#7) For this step I am going to plot the clusters into a linear graph, so I can identify patterns and isolate the groups to better understand each one individually. I can see that the "cleanest" clustering variable is Petal Length and Petal Width. This indicates that, broadly speaking, Setosa have the smallest Petals, Versicolor middle petals and Virginica the largest petals.# 
+
+df4modindex <- data.frame(df2[,-1], row.names = df2[,7]) #I create a new df with Species ID as the index, but keeping the Species column.#
+
+df4modindex <- subset(df4modindex, select = -(SpeciesID)) #I drop the unnecessary SpeciesID column.#
+
+#install.packages("plotly")#
+library(GGally)
+library(plotly)
+
+p <- ggparcoord(data = df4modindex, columns = c(1:4), groupColumn = "Species", scale = "std") + labs(x = "Flowers measurements", y = "value (in standard-deviation units)", title = "Flowers Clustering")
+ggplotly(p)             
